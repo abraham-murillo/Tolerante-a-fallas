@@ -1,11 +1,25 @@
+// Computación tolerante a fallas, D01, Equipo 02
+// - Correa Patiño Rogelio Andres
+// - Guzmán Mendoza Jesús Uriel
+// - Murillo Sandoval Abraham Baltazar
+// - Sedano Luna Alejandro
+// - Valencia Curiel Armando Saul
+
+// Referencias
 // http://archive.dimacs.rutgers.edu/drei/1997/classroom/lessons/hamming.html
 // https://users.cs.fiu.edu/~downeyt/cop3402/hamming.html
+// https://es.wikipedia.org/wiki/C%C3%B3digo_Hamming#:~:text=Hoy%2C%20el%20c%C3%B3digo%20de%20Hamm
+// ing,bits%20de%20datos%20del%20mensaje.&text=Para%20poder%20detectar%20(aunque%20sin,c%C3%B3digo%20
+// se%20llama%20Hamming%20extendido.
 
-// Computación tolerante a fallas, D01, Equipo 02
+#include <algorithm>
+#include <array>
 #include <bitset>
 #include <cmath>
+#include <fstream>
 #include <iostream>
 #include <string>
+#include <vector>
 using namespace std;
 
 /*
@@ -15,7 +29,59 @@ using namespace std;
   - El programa deberá estar validado para entradas erróneas distintas a binario.
 */
 
+struct Dictionary {
+  vector<array<int, 2>> nxt;
+  vector<bool> isWord;
+
+  Dictionary() {
+    nxt.push_back(array<int, 2>());
+    isWord.push_back(false);
+  }
+
+  void insert(string& hamming, int u = 0) {
+    for (int i = 0; i < hamming.size(); i++) {
+      if (!nxt[u][hamming[i] - '0']) {
+        nxt[u][hamming[i] - '0'] = nxt.size();
+        nxt.push_back(array<int, 2>());
+        isWord.push_back(false);
+      }
+      u = nxt[u][hamming[i] - '0'];
+    }
+    isWord[u] = true;
+  }
+
+  bool search(int pos, int u, int cnt, string& query) {
+    // query: ??1?1111
+    // good:  ??0?0001
+    if (cnt > 5)
+      return false;
+
+    if (pos == query.size())
+      return isWord[u];
+
+    {
+      int v = nxt[u][query[pos] - '0'];
+      if (v && search(pos + 1, v, cnt, query)) {
+        return true;
+      }
+    }
+
+    query[pos] = query[pos] ^ 1;
+    {
+      int v = nxt[u][query[pos] - '0'];
+      if (v && search(pos + 1, v, cnt + 1, query)) {
+        return true;
+      }
+    }
+    query[pos] = query[pos] ^ 1;
+
+    return false;
+  }
+};
+
 struct Hamming {
+  Dictionary dict;
+
   bool isValid(const string& str, const string alphabet = "01") {
     for (auto c : str) {
       bool exists = false;
@@ -44,8 +110,9 @@ struct Hamming {
   }
 
   void toLowerCase(string& s) {
-    for (char& c : s)
-      c = tolower(c);
+    for (int i = 0; i < s.size(); i++) {
+      s[i] = tolower(s[i]);
+    }
   }
 
   string toBinary(string word) {
@@ -147,6 +214,8 @@ struct Hamming {
       }
 
       // Busca qué palabra de español es la más parecida
+      dict.search(0, 0, 0, correctHammingCode);
+
       cout << toAlpha(correctHammingCode) << '\n';
 
     } else {
@@ -209,12 +278,33 @@ struct Hamming {
 
     cout << 100 * double(wrong) / double(total) << "%\n";
   }
+
+  void loadDictionary() {
+    ifstream data("diccionario.txt");
+    if (!data) {
+      cerr << "Error no se puede abrir el archivo\n";
+      exit(1);
+    }
+
+    string word;
+    int k = 0;
+    while (!data.eof()) {
+      data >> word;
+      if (isValid(word, "az")) {
+        string hamming = calculateHamming(word);
+        dict.insert(hamming, 0);
+        k++;
+      }
+    }
+
+    cout << k << " palabras cargadas\n";
+  }
 };
 
 int main() {
-  Hamming hamming;
 
-  // hamming.selfTest();
+  Hamming hamming;
+  hamming.loadDictionary();
 
   string op;
 
@@ -258,4 +348,4 @@ int main() {
   return 0;
 }
 
-// 010111111001001000011001101110
+// 001111111001001000011010101110
