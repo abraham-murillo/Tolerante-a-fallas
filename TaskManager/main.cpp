@@ -8,6 +8,8 @@
 #include <array>
 #include <bitset>
 #include <cmath>
+#include <conio.h>
+#include <cstdio>
 #include <fstream>
 #include <iostream>
 #include <map>
@@ -17,6 +19,8 @@
 #include <thread>
 #include <utility>
 #include <vector>
+#include <windows.h>
+
 using namespace std::this_thread; // sleep_for, sleep_until
 using namespace std::chrono_literals; // ns, us, ms, s, h, etc.
 using namespace std;
@@ -25,6 +29,9 @@ using namespace std;
 const auto WAIT_ON_SCREEN = 1s;
 const int BAR_HEIGHT = 5;
 const int BAR_WIDTH = 3;
+const int BLACK = 0;
+const int WHITE = 15;
+int columns, rows;
 
 struct Task {
   int id;
@@ -35,6 +42,10 @@ struct Task {
 
 void paint(int x, int y, int color) {
   // Hacer que pinte (x, y) con cierto color
+  COORD coord = {x, rows - y};
+  SetConsoleCursorPosition(GetStdHandle(STD_OUTPUT_HANDLE), coord);
+  SetConsoleTextAttribute(GetStdHandle(STD_OUTPUT_HANDLE), color);
+  cout << " ";
 }
 
 struct Numbers {
@@ -74,13 +85,14 @@ struct Numbers {
 
     for (int row = 0; row < 5; row++)
       for (int i = 0; i < digits.size(); i++)
-        if (number[digits[i]][row] == '#')
-          paint(x + i, y + row, color);
+        for (char ch : number[digits[i]][row])
+          if (ch == '#')
+            paint(x + i, y + row, color);
   }
 } numbers;
 
 void clearScreen() {
-#if defined(WIN32) || defined(_WIN32) || defined(__WIN32__) || defined(__NT__)
+#if defined(WIN32) || defined(WIN32) || defined(WIN32) || defined(NT_)
   system("cls");
 #else
   system("clear");
@@ -89,6 +101,14 @@ void clearScreen() {
 
 int main() {
   numbers.read();
+  CONSOLE_SCREEN_BUFFER_INFO csbi;
+
+  GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi);
+  columns = csbi.srWindow.Right - csbi.srWindow.Left + 1;
+  rows = csbi.srWindow.Bottom - csbi.srWindow.Top + 1;
+
+  // printf("columns: %d\n", columns);
+  // printf("rows: %d\n", rows);
 
   int n;
   cout << "Escriba la cantidad de procesos:\n";
@@ -96,7 +116,8 @@ int main() {
 
   int maxEnd = 0;
   vector<Task> tasks;
-  for (int id = 0, lastY = 20; id < n; id++, lastY += BAR_HEIGHT) {
+  int lastY = columns - 2 * BAR_HEIGHT;
+  for (int id = 0; id < n; id++) {
     Task task;
     int duration;
     cout << "Escriba cuando inicia y cuánto dura el proceso:\n";
@@ -110,6 +131,18 @@ int main() {
     tasks.emplace_back(task);
 
     maxEnd = max(maxEnd, task.end);
+    lastY -= BAR_HEIGHT;
+  }
+
+  // Escalar las barras
+  // Tengo que hacer maxEnd pedazos en columns
+  int barWidth = max(1, columns / maxEnd);
+
+  for (Task& task : tasks) {
+    task.start = task.start * columns / maxEnd;
+    task.end = task.end * columns / maxEnd;
+
+    task.x = task.start * barWidth;
   }
 
   clearScreen();
@@ -120,6 +153,8 @@ int main() {
     return a.end < b.end;
   });
 
+  int clockX = 0;
+  int clockY = rows - 1;
   set<pair<int, int>> inExecution; // {end, task position}
   int lastPos = 0;
   for (int globalTime = 0; globalTime <= maxEnd + 1; globalTime++) {
@@ -135,19 +170,20 @@ int main() {
     }
 
     // Pintarlo de negro para "borrarlo"
-    numbers.print(0, 0, BLACK, globalTime - 1);
+    numbers.print(clockX, clockY, BLACK, globalTime - 1);
     // Pintarlo de nuevo pero en blanco
-    numbers.print(0, 0, WHITE, globalTime);
+    numbers.print(clockX, clockY, WHITE, globalTime);
 
+    vector<int> colors = {1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15, 16};
     for (auto&& [end, pos] : inExecution) {
-      const Task& task = tasks[pos];
+      Task& task = tasks[pos];
       // Pintar con gotoxy()
       // Se supone que cada task tiene un (x, y), pintar el cuadrado siguiente
-      for (int i = 0; i < BAR_WIDTH; i++)
+      for (int i = 0; i < barWidth; i++)
         for (int j = 0; j < BAR_HEIGHT; j++) {
-          paint(task.x + i, task.y + j, GREEN);
+          paint(task.x + i, task.y + j, colors[task.id % 15] * 16);
         }
-      task.x += BAR_WIDTH;
+      task.x += barWidth;
     }
 
     sleep_for(WAIT_ON_SCREEN);
